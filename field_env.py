@@ -7,6 +7,7 @@
 import matlab.engine
 import os
 import math
+import numpy as np
 from typing import Callable, Tuple
 
 
@@ -67,7 +68,9 @@ class Flow_Field():
                     Lag.append([float(tmp[0]), float(tmp[1])])
                 LagXForce=[0]*n
                 LagYForce=[0]*n
-            return Lag, LagXForce, LagYForce
+            return np.array(Lag, dtype=np.float), \
+                np.array(LagXForce, dtype=np.float), \
+                np.array(LagYForce, dtype=np.float)
 
         else:
             yForcehead = 'fY_Lag.'
@@ -79,7 +82,7 @@ class Flow_Field():
             Xpointer = xForcehead + tag + tail
             Ypointer = yForcehead + tag + tail
             with open(os.path.join('hier_IB2d_data', Xpointer), "r") as fx, \
-                open(os.path.join('hier_IB2d_data\\'+Ypointer), "r") as fy:
+                open(os.path.join('hier_IB2d_data', Ypointer), "r") as fy:
                 for i in range(5):
                     fx.readline()
                     fy.readline()
@@ -102,39 +105,55 @@ class Flow_Field():
                     LagXForce.append(float(fx.readline()))
                     LagYForce.append(float(fy.readline()))
 
-            return Lag, LagXForce, LagYForce
+            return np.array(Lag, dtype=np.float), \
+                np.array(LagXForce, dtype=np.float), \
+                np.array(LagYForce, dtype=np.float)
 
     # 计算当前物体质心
     def calculate_mass_center(self, Lag):
-        n = len(Lag)
-        x = 0.0
-        y = 0.0
-        for i in range(n):
-            x += Lag[i][0]
-            y += Lag[i][1]
-        x = x/float(n)
-        y = y/float(n)
-        return [x, y]
+        return np.mean(Lag, axis=0)
 
     # 计算对心力矩
     def calculate_torque(self, Lag, center, fx, fy):
-        n = len(Lag)
-        torque = 0
-        for i in range(n):
-            torque += ((Lag[i][0]-center[0])*fy[i]-(Lag[i][1]-center[1])*fx[i])
-        return torque
+        # Lag: (n, 2)
+        # center: (2)
+        # fx: (n)
+        # fy: (n)
+
+        # * original code
+        # n = len(Lag)
+        # ret = 0
+        # for i in range(n):
+        #     ret += ((Lag[i][0]-center[0])*fy[i]-(Lag[i][1]-center[1])*fx[i])
+        # return ret
+
+        # * optimized code
+        tmp = (Lag - center) * np.stack([fy, -fx], axis=1)
+        return np.sum(tmp)
 
     # 计算总受力
     def calculate_force(self, Lag, fx, fy):
-        n = len(Lag)
-        FX = 0
-        FY = 0
-        for i in range(n-1):
-            ds_squre = (Lag[i][0]-Lag[i+1][0])**2+(Lag[i][1]-Lag[i+1][1])**2
-            ds = math.sqrt(ds_squre)
-            FX += (fx[i]+fx[i+1])/2*ds
-            FY += (fy[i]+fy[i+1])/2*ds
-        return [FX, FY]
+        # Lag: (n, 2)
+        # center: (2)
+        # fx: (n)
+        # fy: (n)
+
+        # * original code
+        # n = len(Lag)
+        # FX = 0
+        # FY = 0
+        # for i in range(n-1):
+        #     ds_squre = (Lag[i][0]-Lag[i+1][0])**2+(Lag[i][1]-Lag[i+1][1])**2
+        #     ds = math.sqrt(ds_squre)
+        #     FX += (fx[i]+fx[i+1])/2*ds
+        #     FY += (fy[i]+fy[i+1])/2*ds
+
+        # * optimized code
+        Lag_0, Lag_1 = Lag[:-1], Lag[1:]
+        ds = np.linalg.norm(Lag_0 - Lag_1, ord=2, axis=1)
+        FX_0, FX_1 = fx[:-1], fx[1:]
+        FY_0, FY_1 = fy[:-1], fy[1:]
+        return np.array([(FX_0 + FX_1), (FY_0 + FY_1)]) / 2 * ds
 
     @staticmethod
     def update_file_with_line_func(filepath: str, line_func: Callable[[str], Tuple[bool, str]]):
@@ -144,7 +163,6 @@ class Flow_Field():
         iter = filter(lambda x: x[0], iter)
         with open(filepath, "w+") as f:
             f.writelines(iter)
-    
 
     # 输入action后根据当前的流场信息求解下一步的流场并更新当前的流场状态
     # 并返回s_:下一时刻的物体受力、质心坐标、对心力矩,reward:正相关于推进的距离
@@ -159,11 +177,11 @@ class Flow_Field():
                     self.k_beam = k
                 if action == 'plus5': # 将update_nonInv_beam中的刚度增加5%
                     k *= 1.05
-                if action == 'plus10': # 将update_nonInv_beam中的刚度增加10%
+                elif action == 'plus10': # 将update_nonInv_beam中的刚度增加10%
                     k *= 1.1
-                if action == 'minus5':  # 将update_nonInv_beam中的刚度减小5%
+                elif action == 'minus5':  # 将update_nonInv_beam中的刚度减小5%
                     k *= 0.95
-                if action == 'minus10': # 将update_nonInv_beam中的刚度减小10%
+                elif action == 'minus10': # 将update_nonInv_beam中的刚度减小10%
                     k *= 0.9
                 return True, f"kStiff = {str(k)} ;\n"
             else:

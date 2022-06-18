@@ -181,6 +181,3 @@ class DeepQNetwork:
         plt.ylabel('Cost')
         plt.xlabel('training steps')
         plt.show()
-
-
-
