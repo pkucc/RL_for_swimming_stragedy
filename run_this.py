@@ -2,56 +2,52 @@ from field_env import Flow_Field
 from RL_brain import DeepQNetwork
 import numpy as np
 
+
 MAX_EPISODE = 2
+
+
 def start_swim():
     action_space = ['plus5', 'plus10', 'minus5', 'minus10', 'zero']
-    pointer = open('total_reward.txt','w+')
-    for episode in range(MAX_EPISODE):
-        # 初始物体状态
-        vertex = open('swimmer.vertex', 'r')
-        n = int(vertex.readline())
-        Lag = []
-        for i in range(n):
-            tmp = vertex.readline().split()
-            Lag.append([float(tmp[0]), float(tmp[1])])
-        x = 0.0
-        y = 0.0
-        n = len(Lag)
-        for i in range(n):
-            x += Lag[i][0]
-            y += Lag[i][1]
-        x = x/float(n)
-        y = y/float(n)
-        observation = [x, y, 0, 0, 0]
-        observation = np.array(observation)
-        # 初始环境
-        env = Flow_Field()
-        env.episode = episode
-        done = False
-        step = 0 #记录步数d
-        while not done:
-            # RL choose action based on observation
-            action = RL.choose_action(observation)
-            print('========action = ', action_space[action], '==========\n')
-            #action = random.choice(env.action_space)
+    with open('total_reward.txt','w+') as f:
+        for episode in range(MAX_EPISODE):
+            # 初始物体状态
+            vertex = open('swimmer.vertex', 'r')
+            n = int(vertex.readline())
+            Lag = []
+            for i in range(n):
+                tmp = vertex.readline().split()
+                Lag.append([float(tmp[0]), float(tmp[1])])
+            Lag = np.array(Lag, dtype=np.float)
+            x, y = np.mean(Lag, axis=0)
+            observation = [x, y, 0, 0, 0]
+            observation = np.array(observation)
+            # 初始环境
+            env = Flow_Field()
+            env.episode = episode
+            done = False
+            step = 0 #记录步数d
+            while not done:
+                # RL choose action based on observation
+                action = RL.choose_action(observation)
+                print('========action = ', action_space[action], '==========\n')
+                #action = random.choice(env.action_space)
 
-            # RL take action and get next observation and reward
-            observation_, reward, done = env.step(action_space[action])
+                # RL take action and get next observation and reward
+                observation_, reward, done = env.step(action_space[action])
 
-            env.total_reward += reward
+                env.total_reward += reward
 
-            RL.store_transition(observation, action, reward, observation_)
+                RL.store_transition(observation, action, reward, observation_)
 
-            if (step > 5) and (step % 5 == 0):
-                RL.learn()
+                if (step > 5) and (step % 5 == 0):
+                    RL.learn()
 
-            # swap observation
-            observation = np.array(observation_)
+                # swap observation
+                observation = np.array(observation_)
 
-            step += 1
-        print('=========================Episode ', episode, ' Total Reward = ', env.total_reward, '================================\n')
-        pointer.write('Episode ' + str(episode) + ' Total Reward = ' + str(env.total_reward) + '\n')
-    pointer.close()
+                step += 1
+            print('=========================Episode ', episode, ' Total Reward = ', env.total_reward, '================================\n')
+            f.write('Episode ' + str(episode) + ' Total Reward = ' + str(env.total_reward) + '\n')
     # 训练结束
     print('train finished!')
     # env.destroy()
@@ -71,6 +67,3 @@ if __name__ == "__main__":
                       )
     start_swim()
     RL.plot_cost()
-"""
-
-"""
