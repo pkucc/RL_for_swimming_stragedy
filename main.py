@@ -61,7 +61,6 @@ while not done:
 
 """
 from field_env import Flow_Field
-import random
 import numpy as np
 
 
