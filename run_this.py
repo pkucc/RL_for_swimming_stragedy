@@ -19,13 +19,14 @@ def start_swim():
                 Lag.append([float(tmp[0]), float(tmp[1])])
             Lag = np.array(Lag, dtype=np.float)
             x, y = np.mean(Lag, axis=0)
+            vertex.close()
             observation = [x, y, 0, 0, 0]
             observation = np.array(observation)
             # 初始环境
             env = Flow_Field()
             env.episode = episode
             done = False
-            step = 0 #记录步数d
+            step = 0 #记录步数
             while not done:
                 # RL choose action based on observation
                 action = RL.choose_action(observation)
