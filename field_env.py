@@ -7,6 +7,8 @@
 import matlab.engine
 import os
 import math
+from typing import Callable, Tuple
+
 
 class Flow_Field():
     def __init__(self):
@@ -31,44 +33,40 @@ class Flow_Field():
 
     # 从输入文件读入终止时间
     def read_end_time(self):
-        pointer = open('input2d', 'r')
-        lines = pointer.readlines()
-        pointer.close()
+        with open('input2d', 'r') as f:
+            lines = f.readlines()
         for line in lines:
             tmp = line.split()
-            if len(tmp) == 0 or tmp[0] != 'Tfinal':
-                continue
-            else:
+            if len(tmp) != 0 and tmp[0] == 'Tfinal':
                 return float(tmp[2])
 
     # 读入dt
     def read_dt(self):
-        pointer = open('input2d', 'r')
-        lines = pointer.readlines()
-        pointer.close()
+        with open('input2d', 'r') as f:
+            lines = f.readlines()
         #dump, dt = 0, 0
         for line in lines:
             tmp = line.split()
-            if len(tmp) > 0 and tmp[0] == 'dt':
-                dt = float(tmp[2])
-            if len(tmp) > 0 and tmp[0] == 'print_dump':
-                dump = float(tmp[2])
-                break
+            if len(tmp) > 0:
+                if tmp[0] == 'dt':
+                    dt = float(tmp[2])
+                elif tmp[0] == 'print_dump':
+                    dump = float(tmp[2])
+                    break
         return dump * dt
 
     # 读入当前时间步的拉格朗日点集合和受力
     def read_LagForce(self, timestep):
         # t=0初始化
         if timestep == 0:
-            vertex=open('swimmer.vertex', 'r')
-            n = int(vertex.readline())
-            Lag = []
-            for i in range(n):
-                tmp=vertex.readline().split()
-                Lag.append([float(tmp[0]), float(tmp[1])])
-            LagXForce=[0]*n
-            LagYForce=[0]*n
-            vertex.close()
+            with open('swimmer.vertex', 'r') as f:
+                n = int(f.readline())
+                Lag = []
+                for i in range(n):
+                    tmp = f.readline().split()
+                    Lag.append([float(tmp[0]), float(tmp[1])])
+                LagXForce=[0]*n
+                LagYForce=[0]*n
             return Lag, LagXForce, LagYForce
 
         else:
@@ -80,31 +78,29 @@ class Flow_Field():
                 tag = '0' + tag
             Xpointer = xForcehead + tag + tail
             Ypointer = yForcehead + tag + tail
-            fx = open('hier_IB2d_data\\'+Xpointer, "r")
-            fy = open('hier_IB2d_data\\'+Ypointer, "r")
-            for i in range(5):
-                fx.readline()
-                fy.readline()
-            fy.readline()
-            tmp = fx.readline()
-            Ntotal = int(tmp.split()[1])
-
-            Lag = []  # 所有拉格朗日点的坐标
-            for i in range(Ntotal):
+            with open(os.path.join('hier_IB2d_data', Xpointer), "r") as fx, \
+                open(os.path.join('hier_IB2d_data\\'+Ypointer), "r") as fy:
+                for i in range(5):
+                    fx.readline()
+                    fy.readline()
                 fy.readline()
                 tmp = fx.readline()
-                tmp2 = tmp.split()
-                Lag.append([float(tmp2[0]), float(tmp2[1])])
-            for i in range(5):
-                fx.readline()
-                fy.readline()
-            LagXForce = []  # 每个拉格朗日点上的力
-            LagYForce = []
-            for i in range(Ntotal):
-                LagXForce.append(float(fx.readline()))
-                LagYForce.append(float(fy.readline()))
-            fx.close()
-            fy.close()
+                Ntotal = int(tmp.split()[1])
+
+                Lag = []  # 所有拉格朗日点的坐标
+                for i in range(Ntotal):
+                    fy.readline()
+                    tmp = fx.readline()
+                    tmp2 = tmp.split()
+                    Lag.append([float(tmp2[0]), float(tmp2[1])])
+                for i in range(5):
+                    fx.readline()
+                    fy.readline()
+                LagXForce = []  # 每个拉格朗日点上的力
+                LagYForce = []
+                for i in range(Ntotal):
+                    LagXForce.append(float(fx.readline()))
+                    LagYForce.append(float(fy.readline()))
 
             return Lag, LagXForce, LagYForce
 
@@ -140,20 +136,24 @@ class Flow_Field():
             FY += (fy[i]+fy[i+1])/2*ds
         return [FX, FY]
 
+    @staticmethod
+    def update_file_with_line_func(filepath: str, line_func: Callable[[str], Tuple[bool, str]]):
+        with open(filepath, 'r') as f:
+            lines = f.readlines()
+        iter = (line_func(lines) for lines in lines)
+        iter = filter(lambda x: x[0], iter)
+        with open(filepath, "w+") as f:
+            f.writelines(iter)
+    
+
     # 输入action后根据当前的流场信息求解下一步的流场并更新当前的流场状态
     # 并返回s_:下一时刻的物体受力、质心坐标、对心力矩,reward:正相关于推进的距离
     # 负相关于质心y方向偏离可以接受的范围的距离
     def step(self, action):
         # 修改update文件中的kStiff
-        RLfile = open('update_nonInv_Beams.m', 'r')
-        RLtarget = open('update_nonInv_Beams.m.bak', 'w+')
-        lines = RLfile.readlines()
-        RLfile.close()
-        for line in lines:
+        def update_kStiff(line: str) -> Tuple[bool, str]:
             tmp = line.split()
-            if len(tmp) == 0 or tmp[0] != 'kStiff':
-                RLtarget.write(line)
-            else:
+            if len(tmp) != 0 and tmp[0] == 'kStiff':
                 k = float(tmp[2])
                 if self.currentTime == 0:
                     self.k_beam = k
@@ -165,48 +165,34 @@ class Flow_Field():
                     k *= 0.95
                 if action == 'minus10': # 将update_nonInv_beam中的刚度减小10%
                     k *= 0.9
-                RLtarget.write('kStiff = ' + str(k) + ' ;\n')
-        RLtarget.close()
-        os.remove(RLfile.name)
-        newname = RLtarget.name.replace('.bak', '')
-        os.rename(RLtarget.name, newname)
+                return True, f"kStiff = {str(k)} ;\n"
+            else:
+                return True, line
+            
+        self.update_file_with_line_func('update_nonInv_Beams.m', update_kStiff)
 
         # 修改重启设置中的最新步
-        RLfile = open('help_Me_Restart.m', 'r')
-        RLtarget = open('help_Me_Restart.m.bak', 'w+')
-        lines = RLfile.readlines()
-        RLfile.close()
-        for line in lines:
+        def update_restart(line: str) -> Tuple[bool, str]:
             tmp = line.split()
-            if len(tmp) == 0 or tmp[0] != 'ctsave':
-                RLtarget.write(line)
+            if len(tmp) != 0 and tmp[0] == 'ctsave':
+                return True, f"ctsave = {str(self.currenTimeStep)} ;\n"
             else:
-                RLtarget.write('ctsave = ' + str(self.currenTimeStep) + ' ;\n')
-        RLtarget.close()
-        os.remove(RLfile.name)
-        newname = RLtarget.name.replace('.bak', '')
-        os.rename(RLtarget.name, newname)
+                return True, line
+
+        self.update_file_with_line_func('help_Me_Restart.m', update_restart)
 
         # 修改input2d中的重启参数和终止参数
-        RLfile = open('input2d', 'r')
-        RLtarget = open('input2d.bak', 'w+')
-        lines = RLfile.readlines()
-        RLfile.close()
-        for line in lines:
+        def update_input2d(line: str) -> Tuple[bool, str]:
             tmp = line.split()
-            if len(tmp) >0 and tmp[0] == 'Restart_Flag' and self.currentTime>0:
-                RLtarget.write('Restart_Flag = 1\n')
-            elif len(tmp) >0 and tmp[0] == 'Tfinal':
-                #print('currenTime='+str(self.currentTime)+'正在将tfinal修改为'+str(self.currentTime+self.dt)+'\n')
-                RLtarget.write('Tfinal = '+str(self.currentTime+self.dt+0.001)+'\n')
-            else:
-                RLtarget.write(line)
-        RLtarget.close()
-        os.remove(RLfile.name)
-        newname = RLtarget.name.replace('.bak', '')
-        os.rename(RLtarget.name, newname)
+            if len(tmp) > 0:
+                if tmp[0] == 'Restart_Flag' and self.currentTime > 0:
+                    return True, 'Restart_Flag = 1\n'
+                elif tmp[0] == 'Tfinal':
+                    #print('currenTime='+str(self.currentTime)+'正在将tfinal修改为'+str(self.currentTime+self.dt)+'\n')
+                    return True, f"Tfinal = {str(self.currentTime + self.dt + 0.001)}\n"
+            return True, line
 
-
+        self.update_file_with_line_func('input2d', update_input2d)
 
         """RLfile = open('input2d', 'r')
         lines = RLfile.readlines()
@@ -231,7 +217,9 @@ class Flow_Field():
         self.currentTime += self.dt
 
         # 判断终止
-        if self.currentTime >= self.endTime:
+        if self.currentTime < self.endTime:
+            done = False
+        else:
             done = True
             self.eng.quit() ################
             # 到了终止后还需要改名结果文件夹的名字，标记是第几次训练
@@ -239,42 +227,25 @@ class Flow_Field():
             os.rename('hier_IB2d_data', 'hier_IB2d_data_' + str(self.episode))
 
             # 还要把input2d中的重启标志改回0，终止时间改回初始值
-            RLfile = open('input2d', 'r')
-            RLtarget = open('input2d.bak', 'w+')
-            lines = RLfile.readlines()
-            RLfile.close()
-            for line in lines:
+            def recover_input2d(line: str) -> Tuple[bool, str]:
                 tmp = line.split()
-                if len(tmp) > 0 and tmp[0] == 'Restart_Flag':
-                    RLtarget.write('Restart_Flag = 0\n')
-                elif len(tmp) > 0 and tmp[0] == 'Tfinal':
-                    RLtarget.write('Tfinal = ' + str(self.endTime) + '\n')
-                else:
-                    RLtarget.write(line)
-            RLtarget.close()
-            os.remove(RLfile.name)
-            newname = RLtarget.name.replace('.bak', '')
-            os.rename(RLtarget.name, newname)
+                if len(tmp) > 0:
+                    if tmp[0] == 'Restart_Flag':
+                        return True, 'Restart_Flag = 0\n'
+                    elif tmp[0] == 'Tfinal':
+                        return True, f"Tfinal = {str(self.endTime)}\n"
+                return True, line
+
+            self.update_file_with_line_func('input2d', recover_input2d)
 
             #还要把update中的初值改回去
-            RLfile = open('update_nonInv_Beams.m', 'r')
-            RLtarget = open('update_nonInv_Beams.m.bak', 'w+')
-            lines = RLfile.readlines()
-            RLfile.close()
-            for line in lines:
+            def recover_kStiff(line: str) -> Tuple[bool, str]:
                 tmp = line.split()
-                tmp = line.split()
-                if len(tmp) == 0 or tmp[0] != 'kStiff':
-                    RLtarget.write(line)
-                else:
-                    RLtarget.write('kStiff = ' + str(self.k_beam) + ' ;\n')
-            RLtarget.close()
-            os.remove(RLfile.name)
-            newname = RLtarget.name.replace('.bak', '')
-            os.rename(RLtarget.name, newname)
-
-        else:
-            done = False
+                if len(tmp) != 0 and tmp[0] == 'kStiff':
+                    return True, f"kStiff = {str(self.k_beam)} ;\n"
+                return True, line
+            
+            self.update_file_with_line_func('update_nonInv_Beams.m', recover_kStiff)
 
         # 设置奖励函数和更新环境状态
         preX=self.massCenter[0]

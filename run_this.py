@@ -1,7 +1,6 @@
 from field_env import Flow_Field
 from RL_brain import DeepQNetwork
 import numpy as np
-import random
 
 MAX_EPISODE = 2
 def start_swim():
