@@ -153,7 +153,9 @@ class Flow_Field():
         ds = np.linalg.norm(Lag_0 - Lag_1, ord=2, axis=1)
         FX_0, FX_1 = fx[:-1], fx[1:]
         FY_0, FY_1 = fy[:-1], fy[1:]
-        return np.array([(FX_0 + FX_1), (FY_0 + FY_1)]) / 2 * ds
+        #return np.array([(FX_0 + FX_1), (FY_0 + FY_1)]) / 2 * ds
+        temp = np.array([(FX_0 + FX_1), (FY_0 + FY_1)]) / 2 * ds
+        return np.sum(temp, axis=1)
 
     @staticmethod
     def update_file_with_line_func(filepath: str, line_func: Callable[[str], Tuple[bool, str]]):
@@ -161,6 +163,7 @@ class Flow_Field():
             lines = f.readlines()
         iter = (line_func(lines) for lines in lines)
         iter = filter(lambda x: x[0], iter)
+        iter = (x[1] for x in iter)
         with open(filepath, "w+") as f:
             f.writelines(iter)
 
@@ -281,7 +284,7 @@ class Flow_Field():
 
         # 返回observation
         s_ = [self.massCenter[0], self.massCenter[1], self.Force[0], self.Force[1], self.torque]
-
+        s_ = np.array(s_)
         return s_, reward, done
 
 

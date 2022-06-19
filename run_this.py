@@ -19,14 +19,14 @@ def start_swim():
                 Lag.append([float(tmp[0]), float(tmp[1])])
             Lag = np.array(Lag, dtype=np.float)
             x, y = np.mean(Lag, axis=0)
-            vertex.close()
             observation = [x, y, 0, 0, 0]
             observation = np.array(observation)
+            vertex.close()
             # 初始环境
             env = Flow_Field()
             env.episode = episode
             done = False
-            step = 0 #记录步数
+            step = 0 #记录步数d
             while not done:
                 # RL choose action based on observation
                 action = RL.choose_action(observation)
@@ -44,7 +44,7 @@ def start_swim():
                     RL.learn()
 
                 # swap observation
-                observation = np.array(observation_)
+                observation = observation_
 
                 step += 1
             print('=========================Episode ', episode, ' Total Reward = ', env.total_reward, '================================\n')
